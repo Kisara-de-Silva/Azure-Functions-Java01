@@ -1,5 +1,9 @@
 package com.function;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.Optional;
 
 import com.google.gson.Gson;
@@ -69,18 +73,19 @@ public class Function {
         // Get the request body as string
         String requestBody = request.getBody().orElse("");
         context.getLogger().info("Raw request body: " + requestBody);
-        
+
+        Gson gson = new Gson();
+
         if (requestBody.isEmpty()) {
             JsonResponse response = new JsonResponse("Request body is required");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(new Gson().toJson(response))
+                    .body(gson.toJson(response))
                     .build();
         }
 
         try {
             // Parse JSON manually
-            Gson gson = new Gson();
             PersonRequest personRequest = gson.fromJson(requestBody, PersonRequest.class);
 
             // Validate the parsed object and required fields
@@ -101,14 +106,41 @@ public class Function {
                         .build();
             }
 
-            // Create response message
-            String message = "Hello, " + personRequest.getFirstName().trim() + " " + personRequest.getLastName().trim();
-            JsonResponse response = new JsonResponse(message);
+            // ✅ Connect to MySQL and insert data
+            String dbUrl = System.getenv("MYSQL_CONNECTION_STRING");
 
-            return request.createResponseBuilder(HttpStatus.OK)
-                    .header("Content-Type", "application/json")
-                    .body(gson.toJson(response))
-                    .build();
+            try (Connection conn = DriverManager.getConnection(dbUrl)) {
+                String sql = "INSERT INTO persons (first_name, last_name) VALUES (?, ?)";
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, personRequest.getFirstName().trim());
+                    stmt.setString(2, personRequest.getLastName().trim());
+
+                    int rowsInserted = stmt.executeUpdate();
+
+                    if (rowsInserted > 0) {
+                        String message = "Saved to database: " + personRequest.getFirstName() + " " + personRequest.getLastName();
+                        JsonResponse response = new JsonResponse(message);
+
+                        return request.createResponseBuilder(HttpStatus.OK)
+                                .header("Content-Type", "application/json")
+                                .body(gson.toJson(response))
+                                .build();
+                    } else {
+                        JsonResponse response = new JsonResponse("Failed to save to database");
+                        return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .header("Content-Type", "application/json")
+                                .body(gson.toJson(response))
+                                .build();
+                    }
+                }
+            } catch (SQLException e) {
+                context.getLogger().severe("Database error: " + e.getMessage());
+                JsonResponse response = new JsonResponse("Database connection failed");
+                return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .header("Content-Type", "application/json")
+                        .body(gson.toJson(response))
+                        .build();
+            }
 
         } catch (Exception e) {
             context.getLogger().severe("Error parsing JSON: " + e.getMessage());
@@ -118,5 +150,14 @@ public class Function {
                     .body(new Gson().toJson(response))
                     .build();
         }
+    }
+
+    private HttpResponseMessage createJsonResponse(HttpRequestMessage<?> request, HttpStatus status, String message) {
+        Gson gson = new Gson();
+        JsonResponse response = new JsonResponse(message);
+        return request.createResponseBuilder(status)
+                .header("Content-Type", "application/json")
+                .body(gson.toJson(response))
+                .build();
     }
 }
