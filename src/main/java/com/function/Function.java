@@ -90,43 +90,53 @@ public class Function {
 
         context.getLogger().info("Java HTTP trigger processed a POST request.");
 
-        // Get the request body as string
         String requestBody = request.getBody().orElse("");
         context.getLogger().info("Raw request body: " + requestBody);
 
         Gson gson = new Gson();
 
         if (requestBody.isEmpty()) {
-            return buildResponse(request, "", "", -1, "Request body is required", HttpStatus.BAD_REQUEST);
+            return buildResponse(request, "", "", -1, "Unsuccessful - Request body is required.", HttpStatus.BAD_REQUEST);
         }
 
         try {
-            // Parse JSON manually
             PersonRequest personRequest = gson.fromJson(requestBody, PersonRequest.class);
 
-            // Validate parsed object and required fields
-            if (personRequest == null ||
-                personRequest.getFirstName() == null || personRequest.getFirstName().trim().isEmpty() ||
-                personRequest.getLastName() == null || personRequest.getLastName().trim().isEmpty()) {
-                return buildResponse(request, personRequest != null ? personRequest.getFirstName() : "",
-                        personRequest != null ? personRequest.getLastName() : "",
-                        -1, "Unsuccessful", HttpStatus.BAD_REQUEST);
+            String firstName = (personRequest != null && personRequest.getFirstName() != null) ? personRequest.getFirstName().trim() : null;
+            String lastName = (personRequest != null && personRequest.getLastName() != null) ? personRequest.getLastName().trim() : null;
+
+            // Check for null or empty firstName
+            if (firstName == null || firstName.isEmpty()) {
+                return buildResponse(request, "", lastName != null ? lastName : "", -1, "Unsuccessful - First name is not entered.", HttpStatus.BAD_REQUEST);
             }
 
-            String firstName = personRequest.getFirstName().trim();
-            String lastName = personRequest.getLastName().trim();
-
-            // Additional validation: Must only contain letters and be 2-50 chars
-            if (!firstName.matches("^[A-Za-z]{2,50}$") || !lastName.matches("^[A-Za-z]{2,50}$")) {
-                return buildResponse(request, firstName, lastName, -1, "Unsuccessful", HttpStatus.BAD_REQUEST);
+            // Check for null or empty lastName
+            if (lastName == null || lastName.isEmpty()) {
+                return buildResponse(request, firstName, "", -1, "Unsuccessful - Last name is not entered.", HttpStatus.BAD_REQUEST);
             }
 
-            // Validation: First character must be uppercase
-            if (!Character.isUpperCase(firstName.charAt(0)) || !Character.isUpperCase(lastName.charAt(0))) {
-                return buildResponse(request, firstName, lastName, -1, "Unsuccessful", HttpStatus.BAD_REQUEST);
+            // Valid name pattern: capital letter + letters, apostrophes, hyphens, dots, spaces
+            String namePattern = "^[A-Za-z\\-'\\. ]{2,50}$";
+
+            // Check invalid characters before case check
+            if (!firstName.matches(namePattern)) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - First name contains invalid characters.", HttpStatus.BAD_REQUEST);
             }
 
-            // ✅ Connect to MySQL and insert data
+            if (!lastName.matches(namePattern)) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Last name contains invalid characters.", HttpStatus.BAD_REQUEST);
+            }
+
+            // Check if first letter is uppercase
+            if (!Character.isUpperCase(firstName.charAt(0))) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - First name must start with a capital letter.", HttpStatus.BAD_REQUEST);
+            }
+
+            if (!Character.isUpperCase(lastName.charAt(0))) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Last name must start with a capital letter.", HttpStatus.BAD_REQUEST);
+            }
+
+            // ✅ Insert into MySQL
             String dbUrl = System.getenv("MYSQL_CONNECTION_STRING");
 
             try (Connection conn = DriverManager.getConnection(dbUrl)) {
@@ -140,17 +150,17 @@ public class Function {
                     if (rowsInserted > 0) {
                         return buildResponse(request, firstName, lastName, 0, "Success", HttpStatus.OK);
                     } else {
-                        return buildResponse(request, firstName, lastName, -1, "Unsuccessful", HttpStatus.INTERNAL_SERVER_ERROR);
+                        return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Failed to insert into database.", HttpStatus.INTERNAL_SERVER_ERROR);
                     }
                 }
             } catch (SQLException e) {
                 context.getLogger().severe("Database error: " + e.getMessage());
-                return buildResponse(request, firstName, lastName, -1, "Unsuccessful", HttpStatus.INTERNAL_SERVER_ERROR);
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Database error.", HttpStatus.INTERNAL_SERVER_ERROR);
             }
 
         } catch (Exception e) {
             context.getLogger().severe("Error parsing JSON: " + e.getMessage());
-            return buildResponse(request, "", "", -1, "Unsuccessful", HttpStatus.BAD_REQUEST);
+            return buildResponse(request, "", "", -1, "Unsuccessful - Invalid JSON format.", HttpStatus.BAD_REQUEST);
         }
     }
 
