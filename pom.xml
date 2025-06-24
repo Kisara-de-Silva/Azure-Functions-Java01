@@ -43,6 +43,13 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version> <!-- or latest version -->
         </dependency>
+
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.33</version> <!-- You can use a newer version if needed -->
+        </dependency>
+
     </dependencies>
 
     <build>
