@@ -21,37 +21,40 @@ import com.microsoft.azure.functions.annotation.HttpTrigger;
  */
 public class Function {
 
+    /**
+     * Response structure with all required fields
+     */
     private static class JsonResponse {
-        private final String message;
+        private final String firstname;
+        private final String lastname;
+        private final int StatusCode;
+        private final String Message;
 
-        public JsonResponse(String message) {
-            this.message = message;
+        public JsonResponse(String firstname, String lastname, int StatusCode, String Message) {
+            this.firstname = firstname;
+            this.lastname = lastname;
+            this.StatusCode = StatusCode;
+            this.Message = Message;
         }
 
-        public String getMessage() {
-            return message;
-        }
+        public String getFirstname() { return firstname; }
+        public String getLastname() { return lastname; }
+        public int getStatusCode() { return StatusCode; }
+        public String getMessage() { return Message; }
     }
 
+    /**
+     * Internal request model to represent incoming JSON
+     */
     private static class PersonRequest {
         private String firstName;
         private String lastName;
 
-        public String getFirstName() {
-            return firstName;
-        }
+        public String getFirstName() { return firstName; }
+        public void setFirstName(String firstName) { this.firstName = firstName; }
 
-        public void setFirstName(String firstName) {
-            this.firstName = firstName;
-        }
-
-        public String getLastName() {
-            return lastName;
-        }
-
-        public void setLastName(String lastName) {
-            this.lastName = lastName;
-        }
+        public String getLastName() { return lastName; }
+        public void setLastName(String lastName) { this.lastName = lastName; }
     }
 
     /**
@@ -70,43 +73,35 @@ public class Function {
 
         context.getLogger().info("Java HTTP trigger processed a POST request.");
 
-        // Get the request body as string
+        // Get request body
         String requestBody = request.getBody().orElse("");
         context.getLogger().info("Raw request body: " + requestBody);
 
         Gson gson = new Gson();
 
-        if (requestBody.isEmpty()) {
-            JsonResponse response = new JsonResponse("Request body is required");
-            return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                    .header("Content-Type", "application/json")
-                    .body(gson.toJson(response))
-                    .build();
-        }
-
         try {
-            // Parse JSON manually
+            // Parse incoming JSON into model
             PersonRequest personRequest = gson.fromJson(requestBody, PersonRequest.class);
 
-            // Validate the parsed object and required fields
-            if (personRequest == null) {
-                JsonResponse response = new JsonResponse("Invalid JSON structure");
-                return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
-                        .header("Content-Type", "application/json")
-                        .body(gson.toJson(response))
-                        .build();
-            }
-
-            if (personRequest.getFirstName() == null || personRequest.getFirstName().trim().isEmpty() ||
+            // Validate input
+            if (personRequest == null ||
+                personRequest.getFirstName() == null || personRequest.getFirstName().trim().isEmpty() ||
                 personRequest.getLastName() == null || personRequest.getLastName().trim().isEmpty()) {
-                JsonResponse response = new JsonResponse("Both firstName and lastName are required");
+
+                JsonResponse response = new JsonResponse(
+                    personRequest != null ? personRequest.getFirstName() : "",
+                    personRequest != null ? personRequest.getLastName() : "",
+                    -1,
+                    "Unsuccessful"
+                );
+
                 return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
                         .header("Content-Type", "application/json")
                         .body(gson.toJson(response))
                         .build();
             }
 
-            // ✅ Connect to MySQL and insert data
+            // Connect to MySQL and insert data
             String dbUrl = System.getenv("MYSQL_CONNECTION_STRING");
 
             try (Connection conn = DriverManager.getConnection(dbUrl)) {
@@ -118,15 +113,26 @@ public class Function {
                     int rowsInserted = stmt.executeUpdate();
 
                     if (rowsInserted > 0) {
-                        String message = "Saved to database: " + personRequest.getFirstName() + " " + personRequest.getLastName();
-                        JsonResponse response = new JsonResponse(message);
+                        // Insert successful
+                        JsonResponse response = new JsonResponse(
+                            personRequest.getFirstName(),
+                            personRequest.getLastName(),
+                            0,
+                            "Success"
+                        );
 
                         return request.createResponseBuilder(HttpStatus.OK)
                                 .header("Content-Type", "application/json")
                                 .body(gson.toJson(response))
                                 .build();
                     } else {
-                        JsonResponse response = new JsonResponse("Failed to save to database");
+                        // Insert failed
+                        JsonResponse response = new JsonResponse(
+                            personRequest.getFirstName(),
+                            personRequest.getLastName(),
+                            -1,
+                            "Unsuccessful"
+                        );
                         return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
                                 .header("Content-Type", "application/json")
                                 .body(gson.toJson(response))
@@ -135,7 +141,12 @@ public class Function {
                 }
             } catch (SQLException e) {
                 context.getLogger().severe("Database error: " + e.getMessage());
-                JsonResponse response = new JsonResponse("Database connection failed");
+                JsonResponse response = new JsonResponse(
+                    personRequest.getFirstName(),
+                    personRequest.getLastName(),
+                    -1,
+                    "Unsuccessful"
+                );
                 return request.createResponseBuilder(HttpStatus.INTERNAL_SERVER_ERROR)
                         .header("Content-Type", "application/json")
                         .body(gson.toJson(response))
@@ -144,20 +155,11 @@ public class Function {
 
         } catch (Exception e) {
             context.getLogger().severe("Error parsing JSON: " + e.getMessage());
-            JsonResponse response = new JsonResponse("Invalid JSON format");
+            JsonResponse response = new JsonResponse("", "", -1, "Unsuccessful");
             return request.createResponseBuilder(HttpStatus.BAD_REQUEST)
                     .header("Content-Type", "application/json")
-                    .body(new Gson().toJson(response))
+                    .body(gson.toJson(response))
                     .build();
         }
-    }
-
-    private HttpResponseMessage createJsonResponse(HttpRequestMessage<?> request, HttpStatus status, String message) {
-        Gson gson = new Gson();
-        JsonResponse response = new JsonResponse(message);
-        return request.createResponseBuilder(status)
-                .header("Content-Type", "application/json")
-                .body(gson.toJson(response))
-                .build();
     }
 }
