@@ -56,43 +56,37 @@ public class Function {
     private static class PersonRequest {
         private String firstName;
         private String lastName;
+        private String dateOfBirth;
+        private String residentialAddress;
+        private String contactNumber;
 
-        public String getFirstName() {
-            return firstName;
-        }
+        public String getFirstName() { return firstName; }
+        public void setFirstName(String firstName) { this.firstName = firstName; }
 
-        public void setFirstName(String firstName) {
-            this.firstName = firstName;
-        }
+        public String getLastName() { return lastName; }
+        public void setLastName(String lastName) { this.lastName = lastName; }
 
-        public String getLastName() {
-            return lastName;
-        }
+        public String getDateOfBirth() { return dateOfBirth; }
+        public void setDateOfBirth(String dateOfBirth) { this.dateOfBirth = dateOfBirth; }
 
-        public void setLastName(String lastName) {
-            this.lastName = lastName;
-        }
+        public String getResidentialAddress() { return residentialAddress; }
+        public void setResidentialAddress(String residentialAddress) { this.residentialAddress = residentialAddress; }
+
+        public String getContactNumber() { return contactNumber; }
+        public void setContactNumber(String contactNumber) { this.contactNumber = contactNumber; }
     }
 
-    /**
-     * This function listens at endpoint "/api/HttpExample".
-     * It accepts POST requests with JSON body containing firstName and lastName.
-     * Example POST body: {"firstName": "John", "lastName": "Dawson"}
-     */
     @FunctionName("HttpExample")
     public HttpResponseMessage run(
-            @HttpTrigger(
-                    name = "req",
-                    methods = { HttpMethod.POST },
-                    authLevel = AuthorizationLevel.ANONYMOUS)
-            HttpRequestMessage<Optional<String>> request,
-            final ExecutionContext context) {
+        @HttpTrigger(
+            name = "req",
+            methods = { HttpMethod.POST },
+            authLevel = AuthorizationLevel.ANONYMOUS)
+        HttpRequestMessage<Optional<String>> request,
+        final ExecutionContext context) {
 
         context.getLogger().info("Java HTTP trigger processed a POST request.");
-
         String requestBody = request.getBody().orElse("");
-        context.getLogger().info("Raw request body: " + requestBody);
-
         Gson gson = new Gson();
 
         if (requestBody.isEmpty()) {
@@ -102,51 +96,66 @@ public class Function {
         try {
             PersonRequest personRequest = gson.fromJson(requestBody, PersonRequest.class);
 
-            String firstName = (personRequest != null && personRequest.getFirstName() != null) ? personRequest.getFirstName().trim() : null;
-            String lastName = (personRequest != null && personRequest.getLastName() != null) ? personRequest.getLastName().trim() : null;
+            String firstName = personRequest.getFirstName() != null ? personRequest.getFirstName().trim() : null;
+            String lastName = personRequest.getLastName() != null ? personRequest.getLastName().trim() : null;
+            String dob = personRequest.getDateOfBirth() != null ? personRequest.getDateOfBirth().trim() : null;
+            String address = personRequest.getResidentialAddress() != null ? personRequest.getResidentialAddress().trim() : null;
+            String contact = personRequest.getContactNumber() != null ? personRequest.getContactNumber().trim() : null;
 
-            // Check for null or empty firstName
+            // Null or empty checks
             if (firstName == null || firstName.isEmpty()) {
                 return buildResponse(request, "", lastName != null ? lastName : "", -1, "Unsuccessful - First name is not entered.", HttpStatus.BAD_REQUEST);
             }
-
-            // Check for null or empty lastName
             if (lastName == null || lastName.isEmpty()) {
                 return buildResponse(request, firstName, "", -1, "Unsuccessful - Last name is not entered.", HttpStatus.BAD_REQUEST);
             }
+            if (dob == null || dob.isEmpty()) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Date of birth is not entered.", HttpStatus.BAD_REQUEST);
+            }
+            if (address == null || address.isEmpty()) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Address is not entered.", HttpStatus.BAD_REQUEST);
+            }
+            if (contact == null || contact.isEmpty()) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Contact number is not entered.", HttpStatus.BAD_REQUEST);
+            }
 
-            // Valid name pattern: capital letter + letters, apostrophes, hyphens, dots, spaces
+            // Validation patterns
             String namePattern = "^[A-Za-z\\-'\\. ]{2,50}$";
+            String phonePattern = "^[0-9+\\-() ]{7,20}$"; // basic format
+            String datePattern = "^\\d{4}-\\d{2}-\\d{2}$"; // YYYY-MM-DD
 
-            // Check invalid characters before case check
             if (!firstName.matches(namePattern)) {
                 return buildResponse(request, firstName, lastName, -1, "Unsuccessful - First name contains invalid characters.", HttpStatus.BAD_REQUEST);
             }
-
             if (!lastName.matches(namePattern)) {
                 return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Last name contains invalid characters.", HttpStatus.BAD_REQUEST);
             }
-
-            // Check if first letter is uppercase
             if (!Character.isUpperCase(firstName.charAt(0))) {
                 return buildResponse(request, firstName, lastName, -1, "Unsuccessful - First name must start with a capital letter.", HttpStatus.BAD_REQUEST);
             }
-
             if (!Character.isUpperCase(lastName.charAt(0))) {
                 return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Last name must start with a capital letter.", HttpStatus.BAD_REQUEST);
             }
+            if (!dob.matches(datePattern)) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Date of birth must be in YYYY-MM-DD format.", HttpStatus.BAD_REQUEST);
+            }
+            if (!contact.matches(phonePattern)) {
+                return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Contact number format is invalid.", HttpStatus.BAD_REQUEST);
+            }
 
-            // ✅ Insert into MySQL
+            // Insert into DB
             String dbUrl = System.getenv("MYSQL_CONNECTION_STRING");
 
             try (Connection conn = DriverManager.getConnection(dbUrl)) {
-                String sql = "INSERT INTO persons (first_name, last_name) VALUES (?, ?)";
+                String sql = "INSERT INTO persons (first_name, last_name, date_of_birth, residential_address, contact_number) VALUES (?, ?, ?, ?, ?)";
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setString(1, firstName);
                     stmt.setString(2, lastName);
+                    stmt.setString(3, dob);
+                    stmt.setString(4, address);
+                    stmt.setString(5, contact);
 
                     int rowsInserted = stmt.executeUpdate();
-
                     if (rowsInserted > 0) {
                         return buildResponse(request, firstName, lastName, 0, "Success", HttpStatus.OK);
                     } else {
@@ -159,18 +168,17 @@ public class Function {
             }
 
         } catch (Exception e) {
-            context.getLogger().severe("Error parsing JSON: " + e.getMessage());
+            context.getLogger().severe("Parsing error: " + e.getMessage());
             return buildResponse(request, "", "", -1, "Unsuccessful - Invalid JSON format.", HttpStatus.BAD_REQUEST);
         }
     }
 
-    // Helper method to build response JSON consistently
     private HttpResponseMessage buildResponse(HttpRequestMessage<?> request, String firstName, String lastName, int statusCode, String message, HttpStatus status) {
         Gson gson = new Gson();
         JsonResponse response = new JsonResponse(firstName, lastName, statusCode, message);
         return request.createResponseBuilder(status)
-                .header("Content-Type", "application/json")
-                .body(gson.toJson(response))
-                .build();
+            .header("Content-Type", "application/json")
+            .body(gson.toJson(response))
+            .build();
     }
 }
