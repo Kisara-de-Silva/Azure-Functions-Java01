@@ -6,6 +6,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.gson.Gson;
 import com.microsoft.azure.functions.ExecutionContext;
 import com.microsoft.azure.functions.HttpMethod;
@@ -20,6 +23,8 @@ import com.microsoft.azure.functions.annotation.HttpTrigger;
  * Azure Function to handle DELETE operations.
  */
 public class DeleteFunction {
+
+    private static final Logger logger = LoggerFactory.getLogger(DeleteFunction.class);
 
     // Custom response structure
     private static class JsonResponse {
@@ -59,12 +64,13 @@ public class DeleteFunction {
         HttpRequestMessage<Optional<String>> request,
         final ExecutionContext context) {
 
-        context.getLogger().info("Java HTTP trigger - Delete Person.");
+        logger.info("Java HTTP trigger - Delete Person called.");
 
         String requestBody = request.getBody().orElse("");
         Gson gson = new Gson();
 
         if (requestBody.isEmpty()) {
+            logger.warn("Delete request received with empty body.");
             return buildResponse(request, -1, "Request body is required.", HttpStatus.BAD_REQUEST);
         }
 
@@ -73,11 +79,14 @@ public class DeleteFunction {
             int id = deleteRequest.getId();
 
             if (id <= 0) {
+                logger.warn("Delete request received with invalid ID: {}", id);
                 return buildResponse(request, -1, "Invalid or missing ID.", HttpStatus.BAD_REQUEST);
             }
 
             // ✅ Delete from database
             String dbUrl = System.getenv("MYSQL_CONNECTION_STRING");
+            logger.info("Attempting to delete record with ID: {}", id);
+
             try (Connection conn = DriverManager.getConnection(dbUrl)) {
                 String sql = "DELETE FROM persons WHERE id = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -85,18 +94,20 @@ public class DeleteFunction {
 
                     int rowsDeleted = stmt.executeUpdate();
                     if (rowsDeleted > 0) {
+                        logger.info("Successfully deleted record with ID: {}", id);
                         return buildResponse(request, 0, "Record deleted successfully.", HttpStatus.OK);
                     } else {
+                        logger.warn("No record found with ID: {}", id);
                         return buildResponse(request, -1, "No record found with the given ID.", HttpStatus.NOT_FOUND);
                     }
                 }
             } catch (SQLException e) {
-                context.getLogger().severe("Database error: " + e.getMessage());
+                logger.error("Database error while deleting ID {}: {}", id, e.getMessage());
                 return buildResponse(request, -1, "Database error.", HttpStatus.INTERNAL_SERVER_ERROR);
             }
 
         } catch (Exception e) {
-            context.getLogger().severe("JSON parsing error: " + e.getMessage());
+            logger.error("JSON parsing error during delete: {}", e.getMessage());
             return buildResponse(request, -1, "Invalid JSON format.", HttpStatus.BAD_REQUEST);
         }
     }

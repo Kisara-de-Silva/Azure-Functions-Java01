@@ -6,6 +6,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.google.gson.Gson;
 import com.microsoft.azure.functions.ExecutionContext;
 import com.microsoft.azure.functions.HttpMethod;
@@ -21,6 +24,8 @@ import com.microsoft.azure.functions.annotation.HttpTrigger;
  */
 public class Function {
 
+    private static final Logger logger = LoggerFactory.getLogger(Function.class);
+
     // Custom response structure for success and failure
     private static class JsonResponse {
         private final String firstname;
@@ -35,21 +40,10 @@ public class Function {
             this.Message = message;
         }
 
-        public String getFirstname() {
-            return firstname;
-        }
-
-        public String getLastname() {
-            return lastname;
-        }
-
-        public int getStatusCode() {
-            return StatusCode;
-        }
-
-        public String getMessage() {
-            return Message;
-        }
+        public String getFirstname() { return firstname; }
+        public String getLastname() { return lastname; }
+        public int getStatusCode() { return StatusCode; }
+        public String getMessage() { return Message; }
     }
 
     // Request model class
@@ -86,7 +80,7 @@ public class Function {
         HttpRequestMessage<Optional<String>> request,
         final ExecutionContext context) {
 
-        context.getLogger().info("Java HTTP trigger processed a POST request.");
+        logger.info("Java HTTP trigger processed a POST request.");
         String requestBody = request.getBody().orElse("");
         Gson gson = new Gson();
 
@@ -158,18 +152,20 @@ public class Function {
 
                     int rowsInserted = stmt.executeUpdate();
                     if (rowsInserted > 0) {
+                        logger.info("Person inserted: {} {}", firstName, lastName);
                         return buildResponse(request, firstName, lastName, 0, "Success", HttpStatus.OK);
                     } else {
+                        logger.error("Failed to insert person: {} {}", firstName, lastName);
                         return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Failed to insert into database.", HttpStatus.INTERNAL_SERVER_ERROR);
                     }
                 }
             } catch (SQLException e) {
-                context.getLogger().severe("Database error: " + e.getMessage());
+                logger.error("Database error: {}", e.getMessage());
                 return buildResponse(request, firstName, lastName, -1, "Unsuccessful - Database error.", HttpStatus.INTERNAL_SERVER_ERROR);
             }
 
         } catch (Exception e) {
-            context.getLogger().severe("Parsing error: " + e.getMessage());
+            logger.error("Parsing error: {}", e.getMessage());
             return buildResponse(request, "", "", -1, "Unsuccessful - Invalid JSON format.", HttpStatus.BAD_REQUEST);
         }
     }
