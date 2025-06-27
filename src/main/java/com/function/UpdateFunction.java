@@ -79,6 +79,7 @@ public class UpdateFunction {
             @HttpTrigger(
                 name = "req",
                 methods = {HttpMethod.PUT},
+                route = "person",
                 authLevel = AuthorizationLevel.ANONYMOUS) 
             HttpRequestMessage<Optional<String>> request,
             final ExecutionContext context) {

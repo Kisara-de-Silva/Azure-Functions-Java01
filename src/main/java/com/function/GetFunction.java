@@ -47,8 +47,8 @@ public class GetFunction {
         @HttpTrigger(
             name = "req",
             methods = {HttpMethod.GET},
-            authLevel = AuthorizationLevel.ANONYMOUS,
-            route = "GetPerson")
+            route = "person",
+            authLevel = AuthorizationLevel.ANONYMOUS)
         HttpRequestMessage<Optional<String>> request,
         final ExecutionContext context) {
 

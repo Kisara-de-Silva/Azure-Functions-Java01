@@ -67,6 +67,9 @@ iii.) DELETE Person | DELETE | http://localhost:7071/api/DeletePerson
   "id": 3
 }
 
+iv.) GET Person | GET | http://localhost:7071/api/GetPerson
+
+
 ### 5. Start the Engine
 
 --->> mvn clean package  

@@ -54,6 +54,7 @@ public class DeleteFunction {
         @HttpTrigger(
             name = "req",
             methods = {HttpMethod.DELETE},
+            route = "person",
             authLevel = AuthorizationLevel.ANONYMOUS)
         HttpRequestMessage<Optional<String>> request,
         final ExecutionContext context) {

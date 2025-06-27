@@ -76,11 +76,12 @@ public class Function {
         public void setContactNumber(String contactNumber) { this.contactNumber = contactNumber; }
     }
 
-    @FunctionName("HttpExample")
+    @FunctionName("CreatePerson")
     public HttpResponseMessage run(
         @HttpTrigger(
             name = "req",
             methods = { HttpMethod.POST },
+            route = "person",
             authLevel = AuthorizationLevel.ANONYMOUS)
         HttpRequestMessage<Optional<String>> request,
         final ExecutionContext context) {
